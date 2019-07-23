@@ -6,24 +6,22 @@ import org.apache.spark.ml.clustering.LDA
 import org.apache.spark.ml.feature.CountVectorizer
 import org.apache.spark.ml.feature.IDF
 import org.apache.spark.sql.Column
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.RowFactory
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.functions.split
+import org.apache.spark.sql.functions.udf
+import org.apache.spark.sql.types.ArrayType
+import org.apache.spark.sql.types.DataType
+import org.apache.spark.sql.types.StringType
 import scala.collection.JavaConverters
 import scala.collection.Seq
+import scala.collection.mutable.WrappedArray
 import java.io.Serializable
+import java.util.*
 
 
 class CategorizeService : Serializable {
     fun convertListToSeq(inputList: List<Column>): Seq<Column> {
         return JavaConverters.asScalaIteratorConverter(inputList.iterator()).asScala().toSeq()
-    }
-
-    @Throws(Exception::class)
-    fun call(arg0: String): Row {
-        // TODO Auto-generated method stub
-        return RowFactory.create(arg0.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()[0], "1,2,3,4")
     }
 
     fun categorize() {
@@ -34,10 +32,10 @@ class CategorizeService : Serializable {
 
         val spark = SQLContext(sc)
 
-        var rawData = spark.read()
+        val rawData = spark.read()
             .option("multiLine", true)
             .option("mode", "PERMISSIVE")
-            .json("tt.json")
+            .json("t.json")
 
 
         val inputList = listOf(Column("_source.full_stack_trace"))
@@ -56,6 +54,7 @@ class CategorizeService : Serializable {
         val featurizedData = cvmodel.transform(cleanText)
 
         val vocab = cvmodel.vocabulary()
+
         val vocab_broadcast = sc.broadcast(vocab)
 
         val idf = IDF().setInputCol("full_stack_traceFeatures")
@@ -65,7 +64,7 @@ class CategorizeService : Serializable {
         val idfModel = idf.fit(featurizedData)
         val rescaledData = idfModel.transform(featurizedData)
         rescaledData.show()
-        println("asda")
+
         val lda = LDA().setK(25)
             .setSeed(321)
             .setOptimizer("em")
@@ -80,6 +79,23 @@ class CategorizeService : Serializable {
         val ldatopics = ldamodel.describeTopics()
         ldatopics.show(25)
 
+
+        val udfMapTermIdToWord = udf(object : Function1<WrappedArray.ofRef<Int>, List<String>> {
+            override operator fun invoke(termIndices: WrappedArray.ofRef<Int>): List<String> {
+                val words = ArrayList<String>()
+                for (termIndex in termIndices.array()) {
+                    words.add(vocab_broadcast.value()[termIndex as Int])
+                }
+                return words
+            }
+
+        }, ArrayType(StringType() as DataType, true) as DataType)
+        val datopicsMapped = ldatopics.withColumn(
+            "topic_desc",
+            udfMapTermIdToWord.apply(convertListToSeq(listOf(ldatopics.col("termIndices"))))
+        )
+
+        datopicsMapped.show()
     }
 
 }

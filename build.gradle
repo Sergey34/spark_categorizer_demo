@@ -11,9 +11,9 @@ repositories {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    compile('org.apache.spark:spark-core_2.11:2.2.3')
-    compile('org.apache.spark:spark-mllib_2.11:2.2.3')
-    compile 'org.apache.spark:spark-sql_2.11:2.2.3'
+    compile('org.apache.spark:spark-core_2.12:2.4.3')
+    compile('org.apache.spark:spark-mllib_2.12:2.4.3')
+    compile 'org.apache.spark:spark-sql_2.12:2.4.3'
 }
 
 compileKotlin {
